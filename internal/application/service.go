@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"stage-rigging-release/internal/domain"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type Service struct {
 	repo              Repository
 	ids               IDGenerator
 	now               func() time.Time
+	mu                sync.RWMutex
 	verificationCache map[string]Verification
 }
 
