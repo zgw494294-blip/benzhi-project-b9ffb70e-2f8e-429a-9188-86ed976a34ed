@@ -25,16 +25,24 @@ type historyLoad struct {
 	err   error
 }
 
-// History reads are dispatched in the background so the aggregation loop can
-// stay independent from the storage implementation.
+// loadHistoryBatch dispatches the storage read on a background goroutine so
+// the caller can abandon the wait as soon as the request context is cancelled.
+// The request context is forwarded to the repository so the SQL driver can
+// interrupt the in-progress query; the buffered channel lets the goroutine
+// publish its result and exit even when the caller has already returned,
+// preventing a leak when cancellation wins the select.
 func loadHistoryBatch(ctx context.Context, repo Repository, batchID string) (*domain.InspectionBatch, error) {
-	result := make(chan historyLoad)
+	result := make(chan historyLoad, 1)
 	go func() {
-		batch, err := repo.Get(context.WithoutCancel(ctx), batchID)
+		batch, err := repo.Get(ctx, batchID)
 		result <- historyLoad{batch: batch, err: err}
 	}()
-	loaded := <-result
-	return loaded.batch, loaded.err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case loaded := <-result:
+		return loaded.batch, loaded.err
+	}
 }
 
 func (s *Service) TestHistory(ctx context.Context, batchID, pointCode, result string) (TestHistory, error) {
