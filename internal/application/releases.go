@@ -51,17 +51,18 @@ type ApprovalPreview struct {
 }
 
 func (s *Service) ApprovalPreview(ctx context.Context, batchID string) (ApprovalPreview, error) {
+	b, err := s.repo.Get(ctx, batchID)
+	if err != nil {
+		return ApprovalPreview{}, err
+	}
+
 	s.previewMu.Lock()
-	if cached, ok := s.previewCache[batchID]; ok {
+	if cached, ok := s.previewCache[batchID]; ok && cached.Version == b.Version {
 		s.previewMu.Unlock()
 		return cached, nil
 	}
 	s.previewMu.Unlock()
 
-	b, err := s.repo.Get(ctx, batchID)
-	if err != nil {
-		return ApprovalPreview{}, err
-	}
 	p := b.Progress()
 	out := ApprovalPreview{BatchID: b.ID, Version: b.Version, Status: b.Status, Progress: p, UntestedPointCodes: p.UntestedPointCodes, LatestResults: map[string]domain.TestResult{}}
 	for _, point := range b.Points {
