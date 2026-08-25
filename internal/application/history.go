@@ -20,8 +20,25 @@ type TestHistory struct {
 	CoveragePercent     float64                      `json:"coveragePercent"`
 }
 
+type historyLoad struct {
+	batch *domain.InspectionBatch
+	err   error
+}
+
+// History reads are dispatched in the background so the aggregation loop can
+// stay independent from the storage implementation.
+func loadHistoryBatch(ctx context.Context, repo Repository, batchID string) (*domain.InspectionBatch, error) {
+	result := make(chan historyLoad)
+	go func() {
+		batch, err := repo.Get(context.WithoutCancel(ctx), batchID)
+		result <- historyLoad{batch: batch, err: err}
+	}()
+	loaded := <-result
+	return loaded.batch, loaded.err
+}
+
 func (s *Service) TestHistory(ctx context.Context, batchID, pointCode, result string) (TestHistory, error) {
-	b, err := s.repo.Get(ctx, batchID)
+	b, err := loadHistoryBatch(ctx, s.repo, batchID)
 	if err != nil {
 		return TestHistory{}, err
 	}
