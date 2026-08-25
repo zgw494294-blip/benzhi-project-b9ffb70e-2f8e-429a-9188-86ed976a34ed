@@ -51,6 +51,13 @@ type ApprovalPreview struct {
 }
 
 func (s *Service) ApprovalPreview(ctx context.Context, batchID string) (ApprovalPreview, error) {
+	s.previewMu.Lock()
+	if cached, ok := s.previewCache[batchID]; ok {
+		s.previewMu.Unlock()
+		return cached, nil
+	}
+	s.previewMu.Unlock()
+
 	b, err := s.repo.Get(ctx, batchID)
 	if err != nil {
 		return ApprovalPreview{}, err
@@ -80,6 +87,9 @@ func (s *Service) ApprovalPreview(ctx context.Context, batchID string) (Approval
 			break
 		}
 	}
+	s.previewMu.Lock()
+	s.previewCache[batchID] = out
+	s.previewMu.Unlock()
 	return out, nil
 }
 
