@@ -6,17 +6,26 @@ import (
 	"encoding/hex"
 	"stage-rigging-release/internal/domain"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Service struct {
-	repo Repository
-	ids  IDGenerator
-	now  func() time.Time
+	repo       Repository
+	ids        IDGenerator
+	now        func() time.Time
+	batchMu    sync.Mutex
+	batchCalls map[string]*batchCall
+}
+
+type batchCall struct {
+	done  chan struct{}
+	batch *domain.InspectionBatch
+	err   error
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, ids: randomIDs{}, now: time.Now}
+	return &Service{repo: repo, ids: randomIDs{}, now: time.Now, batchCalls: make(map[string]*batchCall)}
 }
 
 type randomIDs struct{}
@@ -43,7 +52,26 @@ func validateMeta(meta WriteMeta, creation bool) error {
 }
 
 func (s *Service) GetBatch(ctx context.Context, id string) (*domain.InspectionBatch, error) {
-	return s.repo.Get(ctx, id)
+	s.batchMu.Lock()
+	if call, ok := s.batchCalls[id]; ok {
+		s.batchMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-call.done:
+			return call.batch, call.err
+		}
+	}
+	call := &batchCall{done: make(chan struct{})}
+	s.batchCalls[id] = call
+	s.batchMu.Unlock()
+
+	call.batch, call.err = s.repo.Get(ctx, id)
+	close(call.done)
+	s.batchMu.Lock()
+	delete(s.batchCalls, id)
+	s.batchMu.Unlock()
+	return call.batch, call.err
 }
 func (s *Service) ListBatches(ctx context.Context) ([]domain.InspectionBatch, error) {
 	return s.repo.List(ctx, 100)
