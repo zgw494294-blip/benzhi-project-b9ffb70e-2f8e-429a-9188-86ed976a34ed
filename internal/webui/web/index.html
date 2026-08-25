@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>舞台吊挂放行工作台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>STAGE OPS</strong><span>舞台吊挂验收与放行</span></div>
+    <div class="live"><i></i> 本地安全工作台</div>
+  </header>
+  <main>
+    <aside>
+      <div class="aside-head"><h1>验收批次</h1><button id="new-batch" class="icon" title="创建批次">＋</button></div>
+      <form id="batch-filter" class="filter-form"><select name="status"><option value="">全部状态</option><option value="draft">草稿</option><option value="awaiting_tests">待试验</option><option value="testing">试验中</option><option value="blocked">偏差阻断</option><option value="pending_review">待复核</option><option value="frozen">已冻结</option><option value="released">已放行</option></select><input name="ownerName" placeholder="负责人"><input name="stageZone" placeholder="舞台区域"><input name="from" type="datetime-local"><input name="to" type="datetime-local"><button type="submit">筛选</button></form>
+      <div id="batch-list" class="batch-list"></div>
+    </aside>
+    <section class="workspace">
+      <div id="empty" class="empty"><b>尚未选择验收批次</b><span>从左侧选择，或创建本次装台验收批次。</span></div>
+      <div id="detail" hidden>
+        <div class="title-row">
+          <div><span id="status" class="status"></span><h2 id="batch-title"></h2><p id="batch-meta"></p></div>
+          <div><button id="edit-batch" class="icon" title="维护批次信息">✎</button><button id="refresh" class="icon" title="刷新批次">↻</button></div>
+        </div>
+        <div class="metrics">
+          <div><span>清单吊点</span><strong id="metric-points">0</strong></div>
+          <div><span>试验覆盖</span><strong id="metric-coverage">0%</strong></div>
+          <div><span>合格吊点</span><strong id="metric-passed">0</strong></div>
+          <div><span>未关偏差</span><strong id="metric-deviations">0</strong></div>
+        </div>
+        <nav class="tabs" aria-label="批次操作">
+          <button class="active" data-tab="points">吊点清单</button>
+          <button data-tab="tests">载荷试验</button>
+          <button data-tab="deviations">偏差整改</button>
+          <button data-tab="release">复核放行</button>
+        </nav>
+        <section id="tab-points" class="tab-panel">
+          <div class="section-head"><div><h3>吊点与承载构件</h3><p>锁定前核对构件序列号、额定载荷及计划载荷。</p></div><button id="lock-list" class="primary">锁定待测清单</button></div>
+          <div class="table-wrap"><table><thead><tr><th>吊点</th><th>葫芦</th><th>钢丝绳</th><th>额定 / 计划</th><th>位置</th></tr></thead><tbody id="points-body"></tbody></table></div>
+          <form id="point-form" class="inline-form">
+            <label>吊点编号<input name="pointCode" required maxlength="40"></label><label>葫芦序列号<input name="hoistSerial" required maxlength="60"></label><label>钢丝绳规格<input name="ropeSpec" required maxlength="80"></label><label>额定载荷 kg<input name="ratedLoadKg" type="number" min="1" step="0.1" required></label><label>计划载荷 kg<input name="plannedLoadKg" type="number" min="1" step="0.1" required></label><label>位置说明<input name="positionNote" maxlength="120"></label><button class="primary" type="submit">登记吊点</button>
+          </form>
+        </section>
+        <section id="tab-tests" class="tab-panel" hidden>
+          <div class="section-head"><div><h3>载荷试验录入</h3><p>合格阈值：实测为目标的 95%–110%，保持不少于 60 秒，位移不超过 5 mm。</p></div></div>
+          <form id="test-form" class="form-grid">
+            <label>吊点<select name="riggingPointId" id="test-point" required></select></label><label>目标载荷 kg<input name="targetLoadKg" type="number" min="1" step="0.1" required></label><label>实测载荷 kg<input name="measuredLoadKg" type="number" min="1" step="0.1" required></label><label>保持时长 秒<input name="holdSeconds" type="number" min="0" required></label><label>位移 mm<input name="displacementMm" type="number" min="0" step="0.1" required></label><label>记录员<input name="recordedBy" required maxlength="60"></label>
+            <fieldset><legend>不合格时登记偏差</legend><label>等级<select name="severity"><option value="major">重大</option><option value="minor">一般</option><option value="critical">严重</option></select></label><label>现象<input name="symptom" maxlength="200"></label><label>处置要求<input name="requiredAction" maxlength="200"></label><label>责任人<input name="assignee" maxlength="60"></label><label>确认人<input name="confirmedBy" maxlength="60"></label><label><input name="assigneeConfirmed" type="checkbox">责任人已确认</label></fieldset>
+            <button class="primary" type="submit">记录试验</button>
+          </form>
+          <div id="test-history" class="records"></div>
+        </section>
+        <section id="tab-deviations" class="tab-panel" hidden><div class="section-head"><div><h3>偏差整改闭环</h3><p>提交整改证据后执行关联复测，复测合格才会关闭偏差。</p></div></div><div id="deviation-list" class="records"></div></section>
+        <section id="tab-release" class="tab-panel" hidden>
+          <div class="release-grid">
+            <form id="approval-form"><h3>技术复核与冻结</h3><label>批准人<input name="approvedBy" required maxlength="60"></label><label>批准意见<textarea name="approvalNote" required maxlength="400"></textarea></label><button class="primary" type="submit">批准并冻结配置</button></form>
+            <form id="issue-form"><h3>签发放行凭据</h3><label>签发人<input name="approvedBy" required maxlength="60"></label><label>签发说明<textarea name="approvalNote" required maxlength="400"></textarea></label><button class="danger" type="submit">签发不可变凭据</button></form>
+          </div>
+          <div id="credential" class="credential"></div><div id="review-record" class="records"></div>
+          <form id="verify-form" class="lookup"><label>凭据序号<input name="serial" type="number" min="1" required></label><button type="submit">按序号查询</button><button id="verify-current" type="button">重算当前摘要</button></form>
+          <pre id="verify-result"></pre>
+        </section>
+      </div>
+    </section>
+  </main>
+  <dialog id="create-dialog"><form id="batch-form"><div class="dialog-head"><h2>创建装台验收批次</h2><button type="button" id="close-dialog" class="icon" title="关闭">×</button></div><label>场馆 / 剧场<input name="venueName" required maxlength="100"></label><label>舞台区域<input name="stageZone" required maxlength="100"></label><label>计划演出时间<input name="performanceAt" type="datetime-local" required></label><label>负责人<input name="ownerName" required maxlength="60"></label><button class="primary" type="submit">创建批次</button></form></dialog>
+  <dialog id="edit-dialog"><form id="edit-form"><div class="dialog-head"><h2>维护批次信息</h2><button type="button" id="close-edit" class="icon" title="关闭">×</button></div><label>场馆 / 剧场<input name="venueName" required maxlength="100"></label><label>舞台区域<input name="stageZone" required maxlength="100"></label><label>计划演出时间<input name="performanceAt" type="datetime-local" required></label><label>负责人<input name="ownerName" required maxlength="60"></label><button class="primary" type="submit">保存变更</button></form></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

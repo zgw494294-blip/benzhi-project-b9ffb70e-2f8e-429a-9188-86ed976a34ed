@@ -1,0 +1,30 @@
+{
+  "contract_version": "project-capabilities-v1",
+  "project_name": "stage-rigging-release",
+  "capabilities": {
+    "go_production_code_over_2000_nonempty_lines": true,
+    "file_persistence": true,
+    "http_api_route_count": 14,
+    "business_feature_count": 7,
+    "web_ui": true
+  },
+  "persistence": {
+    "engine": "SQLite",
+    "foreign_keys": true,
+    "wal": true,
+    "append_only_records": [
+      "load_tests",
+      "frozen_snapshots",
+      "technical_reviews",
+      "release_credentials",
+      "audit_events"
+    ]
+  },
+  "evidence": {
+    "go_mod": "go.mod",
+    "server_entrypoint": "cmd/server/main.go",
+    "database_schema": "internal/store/migrate.go",
+    "web_page": "internal/webui/web/index.html",
+    "selfcheck": "cmd/server/selfcheck.go"
+  }
+}
