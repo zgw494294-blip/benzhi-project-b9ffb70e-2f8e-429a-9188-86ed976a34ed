@@ -18,16 +18,16 @@ func (s *Service) Issue(ctx context.Context, batchID string, c IssueCommand) (*d
 	if err := validateMeta(c.WriteMeta, false); err != nil {
 		return nil, false, err
 	}
+	serial, err := s.repo.NextCredentialSerial(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	if lookup, ok := s.repo.(IdempotencyLookup); ok {
 		if replay, found, err := lookup.LookupIdempotency(ctx, c.IdempotencyKey, "issue_credential", batchID); err != nil {
 			return nil, false, err
 		} else if found {
 			return replay, true, nil
 		}
-	}
-	serial, err := s.repo.NextCredentialSerial(ctx)
-	if err != nil {
-		return nil, false, err
 	}
 	return s.repo.Mutate(ctx, batchID, c.ExpectedVersion, c.IdempotencyKey, "issue_credential", func(b *domain.InspectionBatch) error {
 		return b.IssueCredential(s.ids.New(), serial, c.ApprovedBy, c.ApprovalNote, s.now())
