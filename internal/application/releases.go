@@ -84,6 +84,9 @@ func (s *Service) ApprovalPreview(ctx context.Context, batchID string) (Approval
 }
 
 func (s *Service) VerifyBatch(ctx context.Context, batchID string) (Verification, error) {
+	if cached, ok := s.verificationCache[batchID]; ok {
+		return cached, nil
+	}
 	b, err := s.repo.Get(ctx, batchID)
 	if err != nil {
 		return Verification{}, err
@@ -91,6 +94,9 @@ func (s *Service) VerifyBatch(ctx context.Context, batchID string) (Verification
 	v := Verification{Credential: b.Credential, Status: b.VerifyCredential()}
 	if b.Snapshot != nil {
 		v.RecomputedDigest = b.RecomputeSnapshotDigest()
+	}
+	if b.Status == domain.StatusReleased && b.Credential != nil {
+		s.verificationCache[batchID] = v
 	}
 	return v, nil
 }

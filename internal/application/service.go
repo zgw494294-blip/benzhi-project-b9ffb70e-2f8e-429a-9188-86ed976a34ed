@@ -10,13 +10,19 @@ import (
 )
 
 type Service struct {
-	repo Repository
-	ids  IDGenerator
-	now  func() time.Time
+	repo              Repository
+	ids               IDGenerator
+	now               func() time.Time
+	verificationCache map[string]Verification
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, ids: randomIDs{}, now: time.Now}
+	return &Service{
+		repo:              repo,
+		ids:               randomIDs{},
+		now:               time.Now,
+		verificationCache: make(map[string]Verification),
+	}
 }
 
 type randomIDs struct{}
