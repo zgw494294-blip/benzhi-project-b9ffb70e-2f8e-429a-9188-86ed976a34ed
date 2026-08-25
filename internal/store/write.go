@@ -59,6 +59,17 @@ func (s *SQLite) Create(ctx context.Context, key string, b *domain.InspectionBat
 }
 
 func (s *SQLite) Mutate(ctx context.Context, id string, expected int64, key, action string, fn func(*domain.InspectionBatch) error) (*domain.InspectionBatch, bool, error) {
+	b, replayed, err := s.commitMutation(ctx, id, expected, key, action, fn)
+	if err != nil || replayed {
+		return b, replayed, err
+	}
+	if err = appendCommittedAudit(ctx, s.db, b, action); err != nil {
+		return nil, false, err
+	}
+	return b, false, nil
+}
+
+func (s *SQLite) commitMutation(ctx context.Context, id string, expected int64, key, action string, fn func(*domain.InspectionBatch) error) (*domain.InspectionBatch, bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, false, err
@@ -88,9 +99,6 @@ func (s *SQLite) Mutate(ctx context.Context, id string, expected int64, key, act
 		return nil, false, err
 	}
 	if err = saveResult(ctx, tx, key, action, b); err != nil {
-		return nil, false, err
-	}
-	if err = appendAudit(ctx, tx, b, action); err != nil {
 		return nil, false, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -163,5 +171,10 @@ func saveResult(ctx context.Context, tx *sql.Tx, key, action string, b *domain.I
 }
 func appendAudit(ctx context.Context, tx *sql.Tx, b *domain.InspectionBatch, action string) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO audit_events(batch_id,action,batch_version,occurred_at) VALUES(?,?,?,?)`, b.ID, action, b.Version, timeText(b.UpdatedAt))
+	return err
+}
+
+func appendCommittedAudit(ctx context.Context, db *sql.DB, b *domain.InspectionBatch, action string) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO audit_events(batch_id,action,batch_version,occurred_at) VALUES(?,?,?,?)`, b.ID, action, b.Version, timeText(b.UpdatedAt))
 	return err
 }
