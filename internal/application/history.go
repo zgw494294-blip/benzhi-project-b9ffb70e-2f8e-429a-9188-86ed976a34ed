@@ -20,6 +20,46 @@ type TestHistory struct {
 	CoveragePercent     float64                      `json:"coveragePercent"`
 }
 
+type historyCacheEntry struct {
+	version int64
+	history TestHistory
+}
+
+func buildTestHistory(batchID string, b *domain.InspectionBatch) TestHistory {
+	h := TestHistory{BatchID: batchID, LatestAttempt: map[string]int{}, LatestResult: map[string]domain.TestResult{}, LatestAttemptNo: map[string]int{}, LatestResultByPoint: map[string]domain.TestResult{}}
+	for _, t := range b.Tests {
+		if t.AttemptNo > h.LatestAttempt[t.RiggingPointID] {
+			h.LatestAttempt[t.RiggingPointID] = t.AttemptNo
+			h.LatestResult[t.RiggingPointID] = t.Result
+			for _, p := range b.Points {
+				if p.ID == t.RiggingPointID {
+					h.LatestAttemptNo[p.PointCode] = t.AttemptNo
+					h.LatestResultByPoint[p.PointCode] = t.Result
+					break
+				}
+			}
+		}
+		h.Tests = append(h.Tests, t)
+		if t.Result == domain.TestFailed {
+			h.FailedAttempts++
+		}
+	}
+	for _, p := range b.Points {
+		if t, ok := b.LatestTest(p.ID); ok {
+			h.TestedPoints++
+			if t.Result == domain.TestPassed {
+				h.PassedPoints++
+			}
+		} else {
+			h.UntestedPointCodes = append(h.UntestedPointCodes, p.PointCode)
+		}
+	}
+	if len(b.Points) > 0 {
+		h.CoveragePercent = float64(h.TestedPoints) * 100 / float64(len(b.Points))
+	}
+	return h
+}
+
 func (s *Service) TestHistory(ctx context.Context, batchID, pointCode, result string) (TestHistory, error) {
 	b, err := s.repo.Get(ctx, batchID)
 	if err != nil {
@@ -40,20 +80,18 @@ func (s *Service) TestHistory(ctx context.Context, batchID, pointCode, result st
 			return TestHistory{}, domain.Invalid("pointCode", "吊点不属于该批次")
 		}
 	}
-	h := TestHistory{BatchID: batchID, LatestAttempt: map[string]int{}, LatestResult: map[string]domain.TestResult{}, LatestAttemptNo: map[string]int{}, LatestResultByPoint: map[string]domain.TestResult{}}
-	for _, t := range b.Tests {
-		// Latest-attempt maps always use the full history, even when the rows below are filtered.
-		if t.AttemptNo > h.LatestAttempt[t.RiggingPointID] {
-			h.LatestAttempt[t.RiggingPointID] = t.AttemptNo
-			h.LatestResult[t.RiggingPointID] = t.Result
-			for _, p := range b.Points {
-				if p.ID == t.RiggingPointID {
-					h.LatestAttemptNo[p.PointCode] = t.AttemptNo
-					h.LatestResultByPoint[p.PointCode] = t.Result
-					break
-				}
-			}
-		}
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	entry, ok := s.historyCache[batchID]
+	if !ok || entry.version != b.Version {
+		entry = historyCacheEntry{version: b.Version, history: buildTestHistory(batchID, b)}
+		s.historyCache[batchID] = entry
+	}
+	h := entry.history
+	tests := entry.history.Tests
+	filteredTests := tests[:0]
+	h.FailedAttempts = 0
+	for _, t := range tests {
 		if pointID != "" && t.RiggingPointID != pointID {
 			continue
 		}
@@ -63,20 +101,18 @@ func (s *Service) TestHistory(ctx context.Context, batchID, pointCode, result st
 		if result != "" && string(t.Result) != result {
 			continue
 		}
-		h.Tests = append(h.Tests, t)
+		filteredTests = append(filteredTests, t)
 	}
-	for _, p := range b.Points {
-		if t, ok := b.LatestTest(p.ID); ok {
-			h.TestedPoints++
-			if t.Result == domain.TestPassed {
-				h.PassedPoints++
+	h.Tests = filteredTests
+	if pointID != "" {
+		for _, p := range b.Points {
+			if p.ID != pointID {
+				delete(h.LatestAttempt, p.ID)
+				delete(h.LatestResult, p.ID)
+				delete(h.LatestAttemptNo, p.PointCode)
+				delete(h.LatestResultByPoint, p.PointCode)
 			}
-		} else {
-			h.UntestedPointCodes = append(h.UntestedPointCodes, p.PointCode)
 		}
-	}
-	if len(b.Points) > 0 {
-		h.CoveragePercent = float64(h.TestedPoints) * 100 / float64(len(b.Points))
 	}
 	return h, nil
 }

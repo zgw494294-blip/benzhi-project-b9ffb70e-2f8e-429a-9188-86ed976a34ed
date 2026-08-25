@@ -6,17 +6,20 @@ import (
 	"encoding/hex"
 	"stage-rigging-release/internal/domain"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Service struct {
-	repo Repository
-	ids  IDGenerator
-	now  func() time.Time
+	repo         Repository
+	ids          IDGenerator
+	now          func() time.Time
+	historyMu    sync.Mutex
+	historyCache map[string]historyCacheEntry
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, ids: randomIDs{}, now: time.Now}
+	return &Service{repo: repo, ids: randomIDs{}, now: time.Now, historyCache: make(map[string]historyCacheEntry)}
 }
 
 type randomIDs struct{}
