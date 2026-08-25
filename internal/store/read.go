@@ -284,19 +284,46 @@ func (s *SQLite) ListFiltered(ctx context.Context, f domain.BatchFilter) ([]doma
 		return nil, err
 	}
 	defer rows.Close()
-	var result []domain.InspectionBatch
+	if f.OwnerName != "" {
+		// Owner-filtered results are loaded while the ID cursor still owns
+		// the only pooled connection.
+		result := make([]domain.InspectionBatch, 0, limit+1)
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			b, err := s.Get(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, *b)
+		}
+		return result, rows.Err()
+	}
+	ids := make([]string, 0, limit+1)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	result := make([]domain.InspectionBatch, 0, len(ids))
+	for _, id := range ids {
 		b, err := s.Get(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, *b)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *SQLite) GetCredential(ctx context.Context, serial int64) (*domain.ReleaseCredential, error) {
